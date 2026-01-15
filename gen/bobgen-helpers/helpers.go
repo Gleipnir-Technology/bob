@@ -23,11 +23,33 @@ import (
 const DefaultConfigPath = "./bobgen.yaml"
 
 func Version() string {
-	if info, ok := debug.ReadBuildInfo(); ok {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+	if info.Main.Version != "(devel)" {
 		return info.Main.Version
 	}
-
-	return ""
+	modified := false
+	commit := "unknown"
+	time := "unknown"
+	vcs := "unknown-vcs"
+	for _, setting := range info.Settings {
+		switch setting.Key {
+		case "vcs":
+			vcs = setting.Value
+		case "vcs.revision":
+			commit = setting.Value
+		case "vcs.time":
+			time = setting.Value
+		case "vcs.modified":
+			modified = true
+		}
+	}
+	if modified {
+		return fmt.Sprintf("%s-%s-dirty %s", vcs, commit, time)
+	}
+	return fmt.Sprintf("%s-%s %s", vcs, commit, time)
 }
 
 type Config struct {
@@ -68,10 +90,11 @@ func GetConfigFromProvider[ConstraintExtra, DriverConfig any](provider koanf.Pro
 	k := koanf.New(".")
 
 	// Add some defaults
+	version := Version()
 	err := k.Load(confmap.Provider(map[string]any{
 		"struct_tag_casing": "snake",
 		"relation_tag":      "-",
-		"generator":         fmt.Sprintf("BobGen %s %s", driverConfigKey, Version()),
+		"generator":         fmt.Sprintf("BobGen %s %s", driverConfigKey, version),
 	}, ""), nil)
 	if err != nil {
 		return config, driverConfig, pluginsConfig, fmt.Errorf("failed to load defaults: %w", err)
